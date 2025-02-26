@@ -218,7 +218,7 @@
 
   <script>
     // Replicate API 키 (replicate.com에서 발급받은 키로 교체)
-    const API_KEY = "r8_SoAFmaF1S2sWzmH9rNGsMhXkrezzoya0046tQ"; // 여기 입력!
+    const API_KEY = "r8_GAC0vohpYoqcIH8fydDt1GEtHQus2yt2yIoLm"; // 여기 입력!
     let conversation = [];
 
     function addMessage(text, sender, isImage = false) {
@@ -256,17 +256,40 @@
 
     async function generateTextResponse(input) {
       try {
-        const response = await fetch("http://localhost:3000/api/text", {
+        const response = await fetch("https://api.replicate.com/v1/predictions", {
           method: "POST",
           headers: {
+            "Authorization": `Token ${API_KEY}`,
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({ prompt: input, apiKey: API_KEY })
+          body: JSON.stringify({
+            version: "meta/llama-2-70b-chat:02e509c789964a7ea8736978a43525956ef40397be9033abf9fd2badfe68c9e3",
+            input: {
+              prompt: input,
+              max_length: 500
+            }
+          })
         });
 
-        if (!response.ok) throw new Error("텍스트 생성 실패: " + response.status);
-        const data = await response.json();
-        return data.text;
+        if (!response.ok) {
+          console.log("텍스트 응답 상태:", response.status, await response.text());
+          throw new Error("텍스트 생성 실패: " + response.status);
+        }
+
+        const prediction = await response.json();
+        const predictionId = prediction.id;
+
+        let result;
+        do {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          const statusResponse = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
+            headers: { "Authorization": `Token ${API_KEY}` }
+          });
+          result = await statusResponse.json();
+        } while (result.status !== "succeeded" && result.status !== "failed");
+
+        if (result.status === "failed") throw new Error("텍스트 예측 실패");
+        return result.output.join("");
       } catch (error) {
         console.error("텍스트 오류:", error);
         return "미안, 텍스트 생성에 문제가 생겼어... 다시 시도해줄래?";
@@ -275,17 +298,42 @@
 
     async function generateImageResponse(input) {
       try {
-        const response = await fetch("http://localhost:3000/api/image", {
+        const response = await fetch("https://api.replicate.com/v1/predictions", {
           method: "POST",
           headers: {
+            "Authorization": `Token ${API_KEY}`,
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({ prompt: input.replace("이미지", "").trim(), apiKey: API_KEY })
+          body: JSON.stringify({
+            version: "black-forest-labs/flux.1-schnell",
+            input: {
+              prompt: input.replace("이미지", "").trim(),
+              num_outputs: 1,
+              width: 512,
+              height: 512
+            }
+          })
         });
 
-        if (!response.ok) throw new Error("이미지 생성 실패: " + response.status);
-        const data = await response.json();
-        return data.imageUrl;
+        if (!response.ok) {
+          console.log("이미지 응답 상태:", response.status, await response.text());
+          throw new Error("이미지 생성 실패: " + response.status);
+        }
+
+        const prediction = await response.json();
+        const predictionId = prediction.id;
+
+        let result;
+        do {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          const statusResponse = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
+            headers: { "Authorization": `Token ${API_KEY}` }
+          });
+          result = await statusResponse.json();
+        } while (result.status !== "succeeded" && result.status !== "failed");
+
+        if (result.status === "failed") throw new Error("이미지 예측 실패");
+        return result.output[0];
       } catch (error) {
         console.error("이미지 오류:", error);
         return "미안, 이미지 생성에 문제가 생겼어... 다시 시도해줄래?";
